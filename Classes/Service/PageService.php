@@ -11,17 +11,17 @@ namespace FluidTYPO3\Vhs\Service;
 
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Context\LanguageAspect;
+use TYPO3\CMS\Core\Domain\Repository\PageRepository;
 use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\RootlineUtility;
-use TYPO3\CMS\Frontend\Page\PageRepository;
 
 /**
  * Page Service
  *
- * Wrapper service for \TYPO3\CMS\Frontend\Page\PageRepository including static caches for
+ * Wrapper service for \TYPO3\CMS\Core\Domain\Repository\PageRepository including static caches for
  * menus, rootlines, pages and page overlays to be implemented in
- * viewhelpers by replacing calls to \TYPO3\CMS\Frontend\Page\PageRepository::getMenu()
+ * viewhelpers by replacing calls to \TYPO3\CMS\Core\Domain\Repository\PageRepository::getMenu()
  * and the like.
  */
 class PageService implements SingletonInterface
@@ -218,7 +218,7 @@ class PageService implements SingletonInterface
     protected function getPageRepositoryForBackendContext()
     {
         if (static::$backendPageRepository === null) {
-            static::$backendPageRepository = GeneralUtility::makeInstance(PageRepository::class);
+            static::$backendPageRepository = InstanceFactory::getPageRepository();
         }
         return static::$backendPageRepository;
     }
