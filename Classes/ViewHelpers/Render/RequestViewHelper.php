@@ -8,14 +8,13 @@ namespace FluidTYPO3\Vhs\ViewHelpers\Render;
  * LICENSE.md file that was distributed with this source code.
  */
 
+use TYPO3\CMS\Core\Http\HtmlResponse;
+use TYPO3\CMS\Core\Http\ServerRequest;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
 use TYPO3\CMS\Extbase\Mvc\Dispatcher;
-use TYPO3\CMS\Extbase\Mvc\ResponseInterface;
-use TYPO3\CMS\Extbase\Mvc\Web\Request;
-use TYPO3\CMS\Extbase\Mvc\Web\Response;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
-use TYPO3\CMS\Extbase\Object\ObjectManagerInterface;
+use TYPO3\CMS\Extbase\Mvc\ExtbaseRequestParameters;
+use TYPO3\CMS\Extbase\Mvc\Request;
 use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
@@ -42,7 +41,7 @@ class RequestViewHelper extends AbstractRenderViewHelper
     /**
      * @var string
      */
-    protected static $responseType = Response::class;
+    protected static $responseType = HtmlResponse::class;
 
     /**
      * @return void
@@ -53,7 +52,7 @@ class RequestViewHelper extends AbstractRenderViewHelper
         $this->registerArgument('action', 'string', 'Controller action to call in request');
         $this->registerArgument('controller', 'string', 'Controller name to call in request');
         $this->registerArgument('extensionName', 'string', 'Extension name scope to use in request');
-        $this->registerArgument('vendorName', 'string', 'Vendor name scope to use in request');
+        $this->registerArgument('controllerClassName', 'string', 'Fully qualified class name of the controller', 1);
         $this->registerArgument('pluginName', 'string', 'Plugin name scope to use in request');
         $this->registerArgument('arguments', 'array', 'Arguments to use in request');
     }
@@ -62,7 +61,7 @@ class RequestViewHelper extends AbstractRenderViewHelper
      * @param array $arguments
      * @param \Closure $renderChildrenClosure
      * @param RenderingContextInterface $renderingContext
-     * @return string|ResponseInterface
+     * @return string
      * @throws \Exception
      */
     public static function renderStatic(
@@ -74,10 +73,9 @@ class RequestViewHelper extends AbstractRenderViewHelper
         $controller = $arguments['controller'];
         $extensionName = $arguments['extensionName'];
         $pluginName = $arguments['pluginName'];
-        $vendorName = $arguments['vendorName'];
+        $controllerClassName = $arguments['controllerClassName'];
         $requestArguments = is_array($arguments['arguments']) ? $arguments['arguments'] : [];
         $configurationManager = static::getConfigurationManager();
-        $objectManager = static::getObjectManager();
         $contentObjectBackup = $configurationManager->getContentObject();
         $request = $renderingContext->getControllerContext()->getRequest();
         $configurationBackup = $configurationManager->getConfiguration(
@@ -87,20 +85,22 @@ class RequestViewHelper extends AbstractRenderViewHelper
         );
 
         $temporaryContentObject = GeneralUtility::makeInstance(ContentObjectRenderer::class);
-        /** @var Request $request */
-        $request = $objectManager->get(static::$requestType);
-        $request->setControllerActionName($action);
-        $request->setControllerName($controller);
-        $request->setPluginName($pluginName);
-        $request->setControllerExtensionName($extensionName);
+        $extbaseAttribute = new ExtbaseRequestParameters();
+        $extbaseAttribute->setPluginName($pluginName);
+        $extbaseAttribute->setControllerExtensionName($extensionName);
+        $extbaseAttribute->setControllerAliasToClassNameMapping([$controller => $controllerClassName]);
+        $extbaseAttribute->setControllerName( $controller);
+        $extbaseAttribute->setControllerActionName($action);
+        $extbaseAttribute->setFormat('html');
+
+        $serverRequest = $GLOBALS['TYPO3_REQUEST'] ?? new ServerRequest();
+        $request = new Request($serverRequest->withAttribute('extbase', $extbaseAttribute));
+
         if (!empty($requestArguments)) {
             $request->setArguments($requestArguments);
         }
-        $request->setControllerVendorName($vendorName);
 
         try {
-            /** @var ResponseInterface $response */
-            $response = $objectManager->get(static::$responseType);
             $configurationManager->setContentObject($temporaryContentObject);
             $configurationManager->setConfiguration(
                 $configurationManager->getConfiguration(
@@ -109,12 +109,12 @@ class RequestViewHelper extends AbstractRenderViewHelper
                     $pluginName
                 )
             );
-            static::getDispatcher()->dispatch($request, $response);
+            $response = static::getDispatcher()->dispatch($request);
             $configurationManager->setContentObject($contentObjectBackup);
             if (true === isset($configurationBackup)) {
                 $configurationManager->setConfiguration($configurationBackup);
             }
-            return $response;
+            return $response->getBody();
         } catch (\Exception $error) {
             if (false === (boolean) $arguments['graceful']) {
                 throw $error;
@@ -124,14 +124,6 @@ class RequestViewHelper extends AbstractRenderViewHelper
             }
             return $error->getMessage() . ' (' . $error->getCode() . ')';
         }
-    }
-
-    /**
-     * @return ObjectManagerInterface
-     */
-    protected static function getObjectManager()
-    {
-        return GeneralUtility::makeInstance(ObjectManager::class);
     }
 
     /**
